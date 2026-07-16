@@ -3,11 +3,17 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
+const deadZone = (value, threshold = 0.18) => Math.abs(value) > threshold ? value : 0
 
 export function SailorGame() {
   const mountRef = useRef(null)
-  const controlRef = useRef({ forward: false, back: false, left: false, right: false })
-  const [stats, setStats] = useState({ speed: 0, islands: 0, message: 'Encuentra las islas doradas' })
+  const controlsRef = useRef({ forward: false, reverse: false, left: false, right: false, jump: false })
+  const startedRef = useRef(false)
+  const [loaded, setLoaded] = useState(false)
+  const [started, setStarted] = useState(false)
+  const [stats, setStats] = useState({ speed: 0, islands: 0, controller: 'Teclado listo', message: 'Encuentra las islas doradas' })
+
+  useEffect(() => { startedRef.current = started }, [started])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -24,16 +30,32 @@ export function SailorGame() {
     renderer.outputColorSpace = THREE.SRGBColorSpace
     mount.appendChild(renderer.domElement)
 
-    const sky = new THREE.HemisphereLight(0xc7f1ff, 0x153449, 2.4)
-    scene.add(sky)
+    scene.add(new THREE.HemisphereLight(0xc7f1ff, 0x153449, 2.4))
     const sun = new THREE.DirectionalLight(0xfff0c0, 3.2)
     sun.position.set(-35, 50, -20)
     sun.castShadow = true
     sun.shadow.mapSize.set(1024, 1024)
     scene.add(sun)
 
+    const manager = new THREE.LoadingManager()
+    const textures = new THREE.TextureLoader(manager)
+    const gltfLoader = new GLTFLoader(manager)
+    const seaTexture = textures.load(`${import.meta.env.BASE_URL}models/sea%20waves.jpg`)
+    seaTexture.colorSpace = THREE.SRGBColorSpace
+    seaTexture.wrapS = seaTexture.wrapT = THREE.RepeatWrapping
+    seaTexture.repeat.set(5, 5)
+    const wakeTexture = textures.load(`${import.meta.env.BASE_URL}models/boat%20wake%20pattern.jpg`)
+    wakeTexture.colorSpace = THREE.SRGBColorSpace
+    wakeTexture.wrapS = wakeTexture.wrapT = THREE.RepeatWrapping
+    wakeTexture.repeat.set(1.2, 2.8)
+    manager.onLoad = () => setLoaded(true)
+    manager.onError = () => setLoaded(true)
+
     const waterGeometry = new THREE.PlaneGeometry(500, 500, 80, 80)
-    const waterMaterial = new THREE.MeshStandardMaterial({ color: 0x126a9a, emissive: 0x063c64, emissiveIntensity: 0.32, roughness: 0.3, metalness: 0.18, flatShading: true })
+    const waterMaterial = new THREE.MeshStandardMaterial({
+      color: 0x1980ae, map: seaTexture, emissive: 0x063c64, emissiveIntensity: 0.22,
+      roughness: 0.38, metalness: 0.12, flatShading: true,
+    })
     const water = new THREE.Mesh(waterGeometry, waterMaterial)
     water.rotation.x = -Math.PI / 2
     water.receiveShadow = true
@@ -41,19 +63,42 @@ export function SailorGame() {
     const waterPositions = waterGeometry.attributes.position
 
     const boat = new THREE.Group()
-    boat.position.set(0, 0.3, 18)
+    boat.position.set(0, 0.42, 18)
     scene.add(boat)
-    const loader = new GLTFLoader()
-    loader.load(`${import.meta.env.BASE_URL}models/newcartoonsailboat.glb`, (gltf) => {
+    gltfLoader.load(`${import.meta.env.BASE_URL}models/newcartoonsailboat.glb`, (gltf) => {
       const model = gltf.scene
       model.scale.setScalar(2.75)
+      // El GLB fue modelado sobre el eje X; esta corrección alinea su proa al eje -Z del juego.
+      model.rotation.y = Math.PI / 2
       model.traverse((node) => { if (node.isMesh) { node.castShadow = true; node.receiveShadow = true } })
       boat.add(model)
     })
 
+    const wake = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.8, 8),
+      new THREE.MeshBasicMaterial({ map: wakeTexture, transparent: true, opacity: 0.45, depthWrite: false, color: 0xb8efff }),
+    )
+    wake.rotation.x = -Math.PI / 2
+    wake.visible = false
+    scene.add(wake)
+
+    const splashGroup = new THREE.Group()
+    scene.add(splashGroup)
+    const splashGeometry = new THREE.SphereGeometry(0.11, 5, 4)
+    const splashMaterial = new THREE.MeshBasicMaterial({ color: 0xd9f9ff, transparent: true, opacity: 0.9 })
+    const splashParticles = []
+    function splash(position, heading, intensity) {
+      const particle = new THREE.Mesh(splashGeometry, splashMaterial.clone())
+      const side = new THREE.Vector3(-heading.z, 0, heading.x)
+      particle.position.copy(position).addScaledVector(heading, -1.15).addScaledVector(side, (Math.random() - 0.5) * 1.5)
+      particle.position.y = 0.38
+      splashGroup.add(particle)
+      splashParticles.push({ particle, velocity: side.multiplyScalar((Math.random() - 0.5) * 2.3).add(new THREE.Vector3(heading.x * -1.6, 1.5 + Math.random() * intensity, heading.z * -1.6)), life: 0.55 + Math.random() * 0.4 })
+    }
+
     const islands = [
       { x: -22, z: -22, found: false }, { x: 28, z: -42, found: false }, { x: -43, z: 17, found: false },
-      { x: 42, z: 22, found: false }, { x: 2, z: -70, found: false }
+      { x: 42, z: 22, found: false }, { x: 2, z: -70, found: false },
     ]
     const islandGroup = new THREE.Group()
     scene.add(islandGroup)
@@ -92,13 +137,24 @@ export function SailorGame() {
     const lookTarget = new THREE.Vector3()
     let speed = 0
     let found = 0
+    let thrustTime = 0
+    let jumpOffset = 0
+    let jumpVelocity = 0
+    let splashTimer = 0
+    let gamepadJumpWasDown = false
     let lastTime = performance.now()
     let frame = 0
     let animationId
 
-    function setControl(name, active) { controlRef.current[name] = active }
-    const keyMap = { KeyW: 'forward', ArrowUp: 'forward', KeyS: 'back', ArrowDown: 'back', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right' }
-    const onKeyDown = (event) => { const action = keyMap[event.code]; if (action) { event.preventDefault(); setControl(action, true) } }
+    function setControl(name, active) { controlsRef.current[name] = active }
+    const keyMap = { KeyW: 'forward', ArrowUp: 'forward', KeyA: 'reverse', ArrowDown: 'reverse', KeyS: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', Space: 'jump' }
+    const onKeyDown = (event) => {
+      const action = keyMap[event.code]
+      if (!action) return
+      event.preventDefault()
+      if (action === 'jump' && event.repeat) return
+      setControl(action, true)
+    }
     const onKeyUp = (event) => { const action = keyMap[event.code]; if (action) { event.preventDefault(); setControl(action, false) } }
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
@@ -107,66 +163,131 @@ export function SailorGame() {
       animationId = requestAnimationFrame(animate)
       const dt = Math.min((now - lastTime) / 1000, 0.05)
       lastTime = now
-      const controls = controlRef.current
-      if (controls.forward) speed += 8 * dt
-      if (controls.back) speed -= 7 * dt
-      speed *= Math.pow(0.38, dt)
-      speed = clamp(speed, -2.5, 8)
-      const turnDirection = (controls.left ? 1 : 0) - (controls.right ? 1 : 0)
-      boat.rotation.y += turnDirection * (1.35 + Math.abs(speed) * 0.05) * dt * (speed >= 0 ? 1 : -1)
-      heading.set(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), boat.rotation.y)
-      boat.position.addScaledVector(heading, speed * dt)
-      boat.position.x = clamp(boat.position.x, -105, 105)
-      boat.position.z = clamp(boat.position.z, -105, 105)
-      boat.position.y = 0.38 + Math.sin(now * 0.0024 + boat.position.x * 0.1) * 0.18
-      boat.rotation.z = -turnDirection * 0.13 - Math.sin(now * 0.002) * 0.035
-      boat.rotation.x = Math.cos(now * 0.0023) * 0.045
+      const controls = controlsRef.current
+      const gamepad = navigator.getGamepads?.().find((pad) => pad?.connected)
+      const stickX = gamepad ? deadZone(gamepad.axes[0] || 0) : 0
+      const stickY = gamepad ? deadZone(gamepad.axes[1] || 0) : 0
+      const forward = controls.forward || stickY < -0.18
+      const reverse = controls.reverse || stickY > 0.18
+      const right = controls.right || stickX > 0.18
+      const left = controls.left || stickX < -0.18
+      const jumpPressed = controls.jump || Boolean(gamepad?.buttons[0]?.pressed)
 
+      if (startedRef.current) {
+        const inputStrength = Math.max(forward ? 1 : 0, Math.max(0, -stickY))
+        thrustTime = forward ? clamp(thrustTime + dt * inputStrength, 0, 2.5) : Math.max(0, thrustTime - dt * 1.8)
+        if (forward) speed += (7.5 + thrustTime * 6.5) * inputStrength * dt
+        if (reverse) speed -= 7 * Math.max(1, stickY) * dt
+        speed *= Math.pow(0.42, dt)
+        speed = clamp(speed, -3, 11)
+        const turnDirection = (left ? 1 : 0) - (right ? 1 : 0)
+        boat.rotation.y += turnDirection * (1.45 + Math.abs(speed) * 0.075) * dt * (speed >= 0 ? 1 : -1)
+        heading.set(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), boat.rotation.y)
+        boat.position.addScaledVector(heading, speed * dt)
+        boat.position.x = clamp(boat.position.x, -105, 105)
+        boat.position.z = clamp(boat.position.z, -105, 105)
+        if (jumpPressed && !gamepadJumpWasDown && jumpOffset <= 0.01) jumpVelocity = 6.4
+        jumpVelocity -= 18 * dt
+        jumpOffset = Math.max(0, jumpOffset + jumpVelocity * dt)
+        if (jumpOffset === 0) jumpVelocity = 0
+        const waveBob = Math.sin(now * 0.0024 + boat.position.x * 0.1) * 0.18
+        boat.position.y = 0.45 + waveBob + jumpOffset
+        boat.rotation.z = -turnDirection * 0.13 - Math.sin(now * 0.002) * 0.035
+        boat.rotation.x = Math.cos(now * 0.0023) * 0.045 - Math.min(jumpVelocity, 0) * 0.018
+        gamepadJumpWasDown = jumpPressed
+
+        splashTimer -= dt
+        if (speed > 1.5 && splashTimer <= 0) {
+          const intensity = 0.9 + thrustTime * 2.4
+          const count = 1 + Math.floor(thrustTime * 2)
+          for (let i = 0; i < count; i += 1) splash(boat.position, heading, intensity)
+          splashTimer = clamp(0.22 - thrustTime * 0.06, 0.065, 0.22)
+        }
+      } else {
+        speed *= Math.pow(0.12, dt)
+      }
+
+      seaTexture.offset.x = now * 0.000025
+      seaTexture.offset.y = now * 0.00005
       for (let i = 0; i < waterPositions.count; i += 1) {
         const x = waterPositions.getX(i); const z = waterPositions.getZ(i)
         waterPositions.setY(i, Math.sin(x * 0.09 + now * 0.0018) * 0.26 + Math.cos(z * 0.11 + now * 0.0013) * 0.18)
       }
       waterPositions.needsUpdate = true
       waterGeometry.computeVertexNormals()
+      wake.visible = startedRef.current && Math.abs(speed) > 0.5
+      wake.position.copy(boat.position).addScaledVector(heading, -3.5)
+      wake.position.y = 0.3
+      wake.rotation.y = boat.rotation.y
+      wake.scale.set(1 + Math.abs(speed) * 0.06, 0.7 + Math.abs(speed) * 0.16, 1)
+      wake.material.opacity = clamp(0.18 + Math.abs(speed) * 0.045 + thrustTime * 0.1, 0.18, 0.72)
+      wakeTexture.offset.y = -now * (0.00016 + Math.abs(speed) * 0.00004)
+
+      for (let i = splashParticles.length - 1; i >= 0; i -= 1) {
+        const item = splashParticles[i]
+        item.life -= dt
+        item.velocity.y -= 7 * dt
+        item.particle.position.addScaledVector(item.velocity, dt)
+        item.particle.scale.setScalar(clamp(item.life * 1.7, 0.1, 1.15))
+        item.particle.material.opacity = clamp(item.life * 1.8, 0, 0.9)
+        if (item.life <= 0) { splashGroup.remove(item.particle); item.particle.material.dispose(); splashParticles.splice(i, 1) }
+      }
       islands.forEach((island, i) => {
         const marker = islandGroup.children[i].children.at(-1)
         marker.rotation.y += dt * 1.8
         marker.position.y = 1.65 + Math.sin(now * 0.003 + i) * 0.22
-        if (!island.found && Math.hypot(boat.position.x - island.x, boat.position.z - island.z) < 6.3) {
-          island.found = true
-          marker.visible = false
-          found += 1
-        }
+        if (!island.found && Math.hypot(boat.position.x - island.x, boat.position.z - island.z) < 6.3) { island.found = true; marker.visible = false; found += 1 }
       })
       desiredCamera.copy(boat.position).add(new THREE.Vector3(0, 13, 24).applyAxisAngle(new THREE.Vector3(0, 1, 0), boat.rotation.y))
       camera.position.lerp(desiredCamera, 1 - Math.pow(0.0001, dt))
       lookTarget.copy(boat.position).addScaledVector(heading, 8)
-      lookTarget.y = 0.9
+      lookTarget.y = 0.9 + jumpOffset * 0.22
       camera.lookAt(lookTarget)
-      if ((frame += 1) % 8 === 0) setStats({ speed: Math.round(Math.abs(speed) * 12), islands: found, message: found === islands.length ? '¡Ruta completada, capitán!' : `Balizas encontradas: ${found} de ${islands.length}` })
+      if ((frame += 1) % 8 === 0) setStats({
+        speed: Math.round(Math.abs(speed) * 12), islands: found,
+        controller: gamepad ? `Xbox conectado: ${gamepad.id.slice(0, 22)}` : 'Teclado listo',
+        message: found === islands.length ? '¡Ruta completada, capitán!' : `Balizas encontradas: ${found} de ${islands.length}`,
+      })
       renderer.render(scene, camera)
     }
     animate(performance.now())
     const resize = () => { camera.aspect = mount.clientWidth / mount.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(mount.clientWidth, mount.clientHeight) }
     window.addEventListener('resize', resize)
-    return () => { cancelAnimationFrame(animationId); window.removeEventListener('resize', resize); window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); renderer.dispose(); waterGeometry.dispose(); waterMaterial.dispose(); mount.removeChild(renderer.domElement) }
+    return () => {
+      cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', resize)
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      splashGeometry.dispose(); splashMaterial.dispose(); waterGeometry.dispose(); waterMaterial.dispose(); wake.geometry.dispose(); wake.material.dispose(); renderer.dispose()
+      mount.removeChild(renderer.domElement)
+    }
   }, [])
 
-  const setTouch = (action, active) => { controlRef.current[action] = active }
+  const setTouch = (action, active) => { controlsRef.current[action] = active }
   const bindButton = (action) => ({ onPointerDown: () => setTouch(action, true), onPointerUp: () => setTouch(action, false), onPointerLeave: () => setTouch(action, false), onPointerCancel: () => setTouch(action, false) })
+
   return <main className="game-shell">
     <div ref={mountRef} className="viewport" aria-label="Juego 3D de navegación" />
     <section className="hud">
       <div><p className="eyebrow">EXPEDICIÓN 01</p><h1>Horizonte Marinero</h1></div>
       <div className="readout"><span>Velocidad</span><strong>{stats.speed} nudos</strong></div>
       <div className="mission">{stats.message}</div>
+      <div className="controller-status">{stats.controller}</div>
     </section>
-    <div className="instructions">WASD / flechas para navegar · Acércate a las balizas doradas</div>
+    <div className="instructions">W avanzar · A reversa · S izquierda · D derecha · Espacio saltar · Xbox: stick izquierdo + botón A</div>
     <div className="touch-controls" aria-label="Controles táctiles">
       <button {...bindButton('left')} aria-label="Girar a la izquierda">←</button>
       <button {...bindButton('forward')} aria-label="Avanzar">↑</button>
-      <button {...bindButton('back')} aria-label="Retroceder">↓</button>
+      <button {...bindButton('jump')} aria-label="Saltar">⤒</button>
       <button {...bindButton('right')} aria-label="Girar a la derecha">→</button>
     </div>
+    {!started && <section className="welcome-screen" aria-live="polite">
+      <div className="welcome-card">
+        <p className="eyebrow">EXPEDICIÓN 01</p><h2>Horizonte Marinero</h2>
+        <p className="loading-label">LOADING GAME<span className="loading-dots">...</span></p>
+        <p>{loaded ? 'El mar está listo para zarpar.' : 'Cargando modelo y corrientes del mar.'}</p>
+        <button className="start-button" disabled={!loaded} onClick={() => setStarted(true)}>{loaded ? 'Comenzar expedición' : 'Preparando travesía'}</button>
+      </div>
+    </section>}
   </main>
 }

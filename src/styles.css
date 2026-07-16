@@ -3,18 +3,31 @@
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #09243b; }
 body { font-family: 'DM Sans', sans-serif; color: #fff9e8; }
+button { font: inherit; }
 .game-shell, .viewport { width: 100%; height: 100%; }
 .viewport canvas { display: block; }
-.hud { position: fixed; inset: 0 0 auto; display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: start; padding: 28px clamp(18px, 4vw, 64px); pointer-events: none; text-shadow: 0 2px 10px #062137; }
+.hud { position: fixed; inset: 0 0 auto; display: grid; grid-template-columns: 1fr auto; gap: 12px 18px; align-items: start; padding: 28px clamp(18px, 4vw, 64px); pointer-events: none; text-shadow: 0 2px 10px #062137; }
 .eyebrow { margin: 0 0 4px; color: #ffd15a; font: 12px 'DM Mono', monospace; letter-spacing: .14em; }
-h1 { margin: 0; font: 700 clamp(25px, 3vw, 42px)/1 'Playfair Display', serif; }
+h1, h2 { margin: 0; font-family: 'Playfair Display', serif; }
+h1 { font-size: clamp(25px, 3vw, 42px); line-height: 1; }
+h2 { font-size: clamp(38px, 6vw, 72px); line-height: .95; }
 .readout { padding: 10px 14px; border: 1px solid #eac96d77; background: #092a43a8; backdrop-filter: blur(7px); border-radius: 5px; text-align: right; }
-.readout span { display: block; color: #c2e6ed; font: 10px 'DM Mono', monospace; text-transform: uppercase; letter-spacing: .1em; }
+.readout span, .controller-status { display: block; color: #c2e6ed; font: 10px 'DM Mono', monospace; text-transform: uppercase; letter-spacing: .1em; }
 .readout strong { font: 700 18px 'DM Sans', sans-serif; color: #ffd15a; }
 .mission { grid-column: 1 / -1; color: #e8f7f9; font-size: 14px; }
-.instructions { position: fixed; left: 50%; bottom: 25px; transform: translateX(-50%); padding: 9px 14px; border-radius: 40px; color: #d9f1f5; background: #071e319e; font-size: 12px; text-align: center; pointer-events: none; }
+.controller-status { grid-column: 1 / -1; color: #bce9ec; }
+.instructions { position: fixed; left: 50%; bottom: 25px; transform: translateX(-50%); padding: 9px 14px; border-radius: 40px; color: #d9f1f5; background: #071e31a8; font-size: 12px; text-align: center; pointer-events: none; }
+.welcome-screen { position: fixed; inset: 0; z-index: 4; display: grid; place-items: center; background: linear-gradient(145deg, #061d37e8, #0b6b8dc9), url('/ShipHappens/models/sea%20waves.jpg') center / cover; }
+.welcome-card { width: min(580px, calc(100vw - 36px)); padding: clamp(28px, 5vw, 60px); text-align: center; border: 1px solid #f5d7828c; border-radius: 18px; background: #05233ad9; box-shadow: 0 24px 70px #00101f99; }
+.welcome-card > p:not(.eyebrow) { color: #c9e8ee; }
+.loading-label { margin: 28px 0 8px; color: #ffd15a !important; font: 13px 'DM Mono', monospace; letter-spacing: .18em; }
+.loading-dots { display: inline-block; animation: blink 1.15s steps(3, end) infinite; }
+.start-button { margin-top: 18px; min-width: 210px; padding: 13px 20px; color: #09223a; border: 0; border-radius: 7px; background: #ffd15a; font-weight: 700; cursor: pointer; transition: transform .16s, opacity .16s; }
+.start-button:hover:not(:disabled) { transform: translateY(-2px); }
+.start-button:disabled { cursor: wait; opacity: .55; }
 .touch-controls { position: fixed; right: 20px; bottom: 19px; display: grid; grid-template-columns: repeat(2, 46px); gap: 5px; }
 .touch-controls button { height: 42px; color: #fdf3d8; border: 1px solid #cce9ec88; background: #0a3753ba; border-radius: 8px; font: 26px/1 sans-serif; touch-action: none; }
 .touch-controls button:active { background: #ca8e30; }
+@keyframes blink { 50% { opacity: .25; } }
 @media (min-width: 680px) { .touch-controls { display: none; } }
 @media (max-width: 520px) { .hud { padding: 18px; } .readout { padding: 7px 9px; } .instructions { bottom: 18px; left: 18px; right: 90px; transform: none; font-size: 10px; } }
