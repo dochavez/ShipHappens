@@ -9,6 +9,8 @@ export function SailorGame() {
   const mountRef = useRef(null)
   const controlsRef = useRef({ forward: false, reverse: false, left: false, right: false, jump: false })
   const startedRef = useRef(false)
+  const audioStartRef = useRef(null)
+  const collectSoundRef = useRef(null)
   const [loaded, setLoaded] = useState(false)
   const [started, setStarted] = useState(false)
   const [stats, setStats] = useState({ speed: 0, islands: 0, controller: 'Teclado listo', message: 'Encuentra las islas doradas' })
@@ -44,10 +46,6 @@ export function SailorGame() {
     seaTexture.colorSpace = THREE.SRGBColorSpace
     seaTexture.wrapS = seaTexture.wrapT = THREE.RepeatWrapping
     seaTexture.repeat.set(5, 5)
-    const wakeTexture = textures.load(`${import.meta.env.BASE_URL}models/boat%20wake%20pattern.jpg`)
-    wakeTexture.colorSpace = THREE.SRGBColorSpace
-    wakeTexture.wrapS = wakeTexture.wrapT = THREE.RepeatWrapping
-    wakeTexture.repeat.set(1.2, 2.8)
     manager.onLoad = () => setLoaded(true)
     manager.onError = () => setLoaded(true)
 
@@ -73,14 +71,6 @@ export function SailorGame() {
       model.traverse((node) => { if (node.isMesh) { node.castShadow = true; node.receiveShadow = true } })
       boat.add(model)
     })
-
-    const wake = new THREE.Mesh(
-      new THREE.PlaneGeometry(3.8, 8),
-      new THREE.MeshBasicMaterial({ map: wakeTexture, transparent: true, opacity: 0.45, depthWrite: false, color: 0xb8efff }),
-    )
-    wake.rotation.x = -Math.PI / 2
-    wake.visible = false
-    scene.add(wake)
 
     const splashGroup = new THREE.Group()
     scene.add(splashGroup)
@@ -145,9 +135,53 @@ export function SailorGame() {
     let lastTime = performance.now()
     let frame = 0
     let animationId
+    let audioContext
+    let masterGain
+    let musicEnabled = false
+    let nextMusicAt = 0
+    let musicStep = 0
+
+    function playTone(frequency, at, duration, type = 'sine', volume = 0.06) {
+      if (!audioContext || !masterGain || audioContext.state !== 'running') return
+      const oscillator = audioContext.createOscillator()
+      const gain = audioContext.createGain()
+      oscillator.type = type
+      oscillator.frequency.setValueAtTime(frequency, at)
+      gain.gain.setValueAtTime(0.0001, at)
+      gain.gain.exponentialRampToValueAtTime(volume, at + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + duration)
+      oscillator.connect(gain).connect(masterGain)
+      oscillator.start(at)
+      oscillator.stop(at + duration + 0.03)
+    }
+
+    function startAudio() {
+      const AudioContext = window.AudioContext || window.webkitAudioContext
+      if (!AudioContext) return
+      if (!audioContext) {
+        audioContext = new AudioContext()
+        masterGain = audioContext.createGain()
+        masterGain.gain.value = 0.33
+        masterGain.connect(audioContext.destination)
+      }
+      audioContext.resume()
+      musicEnabled = true
+      nextMusicAt = audioContext.currentTime + 0.06
+    }
+
+    function playCollectSound() {
+      if (!audioContext || audioContext.state !== 'running') return
+      const at = audioContext.currentTime + 0.02
+      playTone(659.25, at, 0.16, 'triangle', 0.12)
+      playTone(783.99, at + 0.1, 0.22, 'triangle', 0.12)
+      playTone(987.77, at + 0.2, 0.38, 'sine', 0.1)
+    }
+
+    audioStartRef.current = startAudio
+    collectSoundRef.current = playCollectSound
 
     function setControl(name, active) { controlsRef.current[name] = active }
-    const keyMap = { KeyW: 'forward', ArrowUp: 'forward', KeyA: 'reverse', ArrowDown: 'reverse', KeyS: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', Space: 'jump' }
+    const keyMap = { KeyW: 'forward', ArrowUp: 'forward', KeyS: 'reverse', ArrowDown: 'reverse', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', Space: 'jump' }
     const onKeyDown = (event) => {
       const action = keyMap[event.code]
       if (!action) return
@@ -172,6 +206,17 @@ export function SailorGame() {
       const right = controls.right || stickX > 0.18
       const left = controls.left || stickX < -0.18
       const jumpPressed = controls.jump || Boolean(gamepad?.buttons[0]?.pressed)
+
+      if (musicEnabled && audioContext?.state === 'running') {
+        const melody = [0, 7, 12, 7, 3, 10, 7, 5]
+        while (nextMusicAt < audioContext.currentTime + 0.14) {
+          const note = melody[musicStep % melody.length]
+          playTone(220 * (2 ** (note / 12)), nextMusicAt, 0.28, 'triangle', 0.085)
+          if (musicStep % 4 === 0) playTone(110, nextMusicAt, 0.2, 'sine', 0.07)
+          musicStep += 1
+          nextMusicAt += 0.36
+        }
+      }
 
       if (startedRef.current) {
         const inputStrength = Math.max(forward ? 1 : 0, Math.max(0, -stickY))
@@ -215,14 +260,6 @@ export function SailorGame() {
       }
       waterPositions.needsUpdate = true
       waterGeometry.computeVertexNormals()
-      wake.visible = startedRef.current && Math.abs(speed) > 0.5
-      wake.position.copy(boat.position).addScaledVector(heading, -3.5)
-      wake.position.y = 0.3
-      wake.rotation.y = boat.rotation.y
-      wake.scale.set(1 + Math.abs(speed) * 0.06, 0.7 + Math.abs(speed) * 0.16, 1)
-      wake.material.opacity = clamp(0.18 + Math.abs(speed) * 0.045 + thrustTime * 0.1, 0.18, 0.72)
-      wakeTexture.offset.y = -now * (0.00016 + Math.abs(speed) * 0.00004)
-
       for (let i = splashParticles.length - 1; i >= 0; i -= 1) {
         const item = splashParticles[i]
         item.life -= dt
@@ -236,7 +273,12 @@ export function SailorGame() {
         const marker = islandGroup.children[i].children.at(-1)
         marker.rotation.y += dt * 1.8
         marker.position.y = 1.65 + Math.sin(now * 0.003 + i) * 0.22
-        if (!island.found && Math.hypot(boat.position.x - island.x, boat.position.z - island.z) < 6.3) { island.found = true; marker.visible = false; found += 1 }
+        if (!island.found && Math.hypot(boat.position.x - island.x, boat.position.z - island.z) < 6.3) {
+          island.found = true
+          marker.visible = false
+          found += 1
+          playCollectSound()
+        }
       })
       desiredCamera.copy(boat.position).add(new THREE.Vector3(0, 13, 24).applyAxisAngle(new THREE.Vector3(0, 1, 0), boat.rotation.y))
       camera.position.lerp(desiredCamera, 1 - Math.pow(0.0001, dt))
@@ -258,13 +300,17 @@ export function SailorGame() {
       window.removeEventListener('resize', resize)
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
-      splashGeometry.dispose(); splashMaterial.dispose(); waterGeometry.dispose(); waterMaterial.dispose(); wake.geometry.dispose(); wake.material.dispose(); renderer.dispose()
+      audioStartRef.current = null
+      collectSoundRef.current = null
+      if (audioContext && audioContext.state !== 'closed') audioContext.close()
+      splashGeometry.dispose(); splashMaterial.dispose(); waterGeometry.dispose(); waterMaterial.dispose(); renderer.dispose()
       mount.removeChild(renderer.domElement)
     }
   }, [])
 
   const setTouch = (action, active) => { controlsRef.current[action] = active }
   const bindButton = (action) => ({ onPointerDown: () => setTouch(action, true), onPointerUp: () => setTouch(action, false), onPointerLeave: () => setTouch(action, false), onPointerCancel: () => setTouch(action, false) })
+  const startGame = () => { audioStartRef.current?.(); setStarted(true) }
 
   return <main className="game-shell">
     <div ref={mountRef} className="viewport" aria-label="Juego 3D de navegación" />
@@ -274,7 +320,7 @@ export function SailorGame() {
       <div className="mission">{stats.message}</div>
       <div className="controller-status">{stats.controller}</div>
     </section>
-    <div className="instructions">W avanzar · A reversa · S izquierda · D derecha · Espacio saltar · Xbox: stick izquierdo + botón A</div>
+    <div className="instructions">W avanzar · A izquierda · S reversa · D derecha · Espacio saltar · Xbox: stick izquierdo + botón A</div>
     <div className="touch-controls" aria-label="Controles táctiles">
       <button {...bindButton('left')} aria-label="Girar a la izquierda">←</button>
       <button {...bindButton('forward')} aria-label="Avanzar">↑</button>
@@ -286,7 +332,7 @@ export function SailorGame() {
         <p className="eyebrow">EXPEDICIÓN 01</p><h2>Horizonte Marinero</h2>
         <p className="loading-label">LOADING GAME<span className="loading-dots">...</span></p>
         <p>{loaded ? 'El mar está listo para zarpar.' : 'Cargando modelo y corrientes del mar.'}</p>
-        <button className="start-button" disabled={!loaded} onClick={() => setStarted(true)}>{loaded ? 'Comenzar expedición' : 'Preparando travesía'}</button>
+        <button className="start-button" disabled={!loaded} onClick={startGame}>{loaded ? 'Comenzar expedición' : 'Preparando travesía'}</button>
       </div>
     </section>}
   </main>
