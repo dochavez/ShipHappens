@@ -1,0 +1,33 @@
+{
+  "asset": { "version": "2.0", "generator": "Horizonte Marinero - procedural sailboat" },
+  "scene": 0,
+  "scenes": [{ "nodes": [0, 1, 2, 3, 4, 5] }],
+  "nodes": [
+    { "name": "Hull", "mesh": 0, "scale": [1.35, 0.7, 2.5], "translation": [0, 0.15, 0] },
+    { "name": "Deck", "mesh": 1, "scale": [1.06, 0.19, 1.92], "translation": [0, 0.68, 0] },
+    { "name": "Mast", "mesh": 2, "scale": [0.12, 3.4, 0.12], "translation": [0, 3.4, 0] },
+    { "name": "SailLeft", "mesh": 3, "scale": [1.75, 2.35, 1], "translation": [-0.92, 4.35, -0.02] },
+    { "name": "SailRight", "mesh": 3, "scale": [-1.28, 1.8, 1], "translation": [0.72, 3.92, 0.02] },
+    { "name": "Flag", "mesh": 4, "scale": [0.5, 0.35, 1], "translation": [0.45, 6.63, 0] }
+  ],
+  "meshes": [
+    { "primitives": [{ "attributes": { "POSITION": 0 }, "indices": 1, "material": 0 }] },
+    { "primitives": [{ "attributes": { "POSITION": 0 }, "indices": 1, "material": 1 }] },
+    { "primitives": [{ "attributes": { "POSITION": 0 }, "indices": 1, "material": 2 }] },
+    { "primitives": [{ "attributes": { "POSITION": 0 }, "indices": 1, "material": 3 }] },
+    { "primitives": [{ "attributes": { "POSITION": 0 }, "indices": 1, "material": 4 }] }
+  ],
+  "materials": [
+    { "name": "OceanRed", "pbrMetallicRoughness": { "baseColorFactor": [0.7, 0.08, 0.045, 1], "metallicFactor": 0.05, "roughnessFactor": 0.58 } },
+    { "name": "DeckWood", "pbrMetallicRoughness": { "baseColorFactor": [0.96, 0.61, 0.22, 1], "metallicFactor": 0, "roughnessFactor": 0.8 } },
+    { "name": "DarkMast", "pbrMetallicRoughness": { "baseColorFactor": [0.12, 0.06, 0.025, 1], "metallicFactor": 0, "roughnessFactor": 0.9 } },
+    { "name": "CreamSail", "doubleSided": true, "pbrMetallicRoughness": { "baseColorFactor": [1, 0.91, 0.63, 1], "metallicFactor": 0, "roughnessFactor": 0.92 } },
+    { "name": "FlagGold", "doubleSided": true, "pbrMetallicRoughness": { "baseColorFactor": [1, 0.5, 0.05, 1], "metallicFactor": 0.05, "roughnessFactor": 0.5 } }
+  ],
+  "buffers": [{ "uri": "data:application/octet-stream;base64,AACAvwAAgL8AAIC/AACAPwAAgL8AAIC/AACAPwAAgD8AAIC/AACAvwAAgD8AAIC/AACAvwAAgL8AAIA/AACAPwAAgL8AAIA/AACAPwAAgD8AAIA/AACAvwAAgD8AAIA/AAABAAIAAAACAAMABAAGAAUABAAHAAYAAAAEAAUAAAAFAAEAAwACAAYAAwAGAAcAAQAFAAYAAQAGAAIAAAADAAcAAAAHAAQA" , "byteLength": 168 }],
+  "bufferViews": [{ "buffer": 0, "byteOffset": 0, "byteLength": 96, "target": 34962 }, { "buffer": 0, "byteOffset": 96, "byteLength": 72, "target": 34963 }],
+  "accessors": [
+    { "bufferView": 0, "componentType": 5126, "count": 8, "type": "VEC3", "max": [1, 1, 0], "min": [-1, -1, -1] },
+    { "bufferView": 1, "componentType": 5123, "count": 36, "type": "SCALAR" }
+  ]
+}
