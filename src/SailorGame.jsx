@@ -327,7 +327,7 @@ export function SailorGame() {
       <button {...bindButton('jump')} aria-label="Saltar">⤒</button>
       <button {...bindButton('right')} aria-label="Girar a la derecha">→</button>
     </div>
-    {!started && <section className="welcome-screen" aria-live="polite">
+    {!started && <section className="welcome-screen" aria-live="polite" style={{ '--sea-texture': `url(${import.meta.env.BASE_URL}models/sea%20waves.jpg)` }}>
       <div className="welcome-card">
         <p className="eyebrow">EXPEDICIÓN 01</p><h2>Horizonte Marinero</h2>
         <p className="loading-label">LOADING GAME<span className="loading-dots">...</span></p>
