@@ -44,7 +44,7 @@ export function SailorGame() {
     boat.position.set(0, 0.3, 18)
     scene.add(boat)
     const loader = new GLTFLoader()
-    loader.load('/models/cartoon-sailboat.gltf', (gltf) => {
+    loader.load(`${import.meta.env.BASE_URL}models/cartoon-sailboat.gltf`, (gltf) => {
       const model = gltf.scene
       model.scale.setScalar(0.62)
       model.traverse((node) => { if (node.isMesh) { node.castShadow = true; node.receiveShadow = true } })
